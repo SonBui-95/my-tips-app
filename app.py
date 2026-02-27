@@ -12,17 +12,21 @@ st.title("📊 Báo Cáo Tiền Tips Theo Tháng")
 # --- KẾT NỐI DỮ LIỆU ---
 @st.cache_data(ttl=600)
 def load_data():
+    # 1. Lấy dữ liệu từ Secrets
+    creds_dict = st.secrets["gcp_service_account"]
+
+    # 2. Kết nối bằng dictionary thay vì bằng file name
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
+
+    # 3. Mở sheet
     sheet = client.open("tips_received").sheet1
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
     if 'Ngày' in df.columns:
-        # Chuyển sang định dạng ngày tháng, ưu tiên ngày đứng trước
         df['Ngày'] = pd.to_datetime(df['Ngày'], dayfirst=True)
-        # Tạo thêm cột 'Tháng/Năm' để nhóm dữ liệu
         df['Tháng/Năm'] = df['Ngày'].dt.strftime('%m/%Y')
     return df
 
