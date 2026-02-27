@@ -12,25 +12,30 @@ st.title("📊 Báo Cáo Tiền Tips Theo Tháng")
 # --- KẾT NỐI DỮ LIỆU ---
 @st.cache_data(ttl=600)
 def load_data():
-    # 1. Lấy dữ liệu từ Secrets
-    creds_dict = st.secrets["gcp_service_account"]
-    # Quan trọng: Dùng hàm keyfile_dict
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-
-    # 2. Kết nối bằng dictionary thay vì bằng file name
+    # 1. Định nghĩa scope TRƯỚC khi sử dụng
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
 
-    # 3. Mở sheet
-    sheet = client.open("tips_received").sheet1
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
+    # 2. Lấy dictionary từ Secrets (Đảm bảo bạn đã lưu Secrets thành công trên Streamlit Cloud)
+    creds_dict = st.secrets["gcp_service_account"]
 
-    if 'Ngày' in df.columns:
-        df['Ngày'] = pd.to_datetime(df['Ngày'], dayfirst=True)
-        df['Tháng/Năm'] = df['Ngày'].dt.strftime('%m/%Y')
-    return df
+    # 3. Kết nối Google Sheets
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+
+        # 4. Mở file và lấy dữ liệu
+        sheet = client.open("tips_received").sheet1
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+
+        # 5. Xử lý định dạng ngày tháng
+        if 'Ngày' in df.columns:
+            df['Ngày'] = pd.to_datetime(df['Ngày'], dayfirst=True)
+            df['Tháng/Năm'] = df['Ngày'].dt.strftime('%m/%Y')
+        return df
+    except Exception as e:
+        st.error(f"Lỗi kết nối dữ liệu: {e}")
+        return pd.DataFrame()
 
 
 try:
