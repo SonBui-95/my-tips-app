@@ -14,6 +14,8 @@ st.title("📊 Báo Cáo Tiền Tips Theo Tháng")
 def load_data():
     # 1. Lấy dữ liệu từ Secrets
     creds_dict = st.secrets["gcp_service_account"]
+    # Quan trọng: Dùng hàm keyfile_dict
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
     # 2. Kết nối bằng dictionary thay vì bằng file name
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
