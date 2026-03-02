@@ -12,77 +12,68 @@ st.title("📊 Báo Cáo Tiền Tips Theo Tháng")
 # --- KẾT NỐI DỮ LIỆU ---
 @st.cache_data(ttl=600)
 def load_data():
-    # 1. Định nghĩa scope
+    # 1. Lấy dữ liệu từ Secrets
+    creds_dict = st.secrets["gcp_service_account"]
+
+    # 2. Kết nối bằng dictionary thay vì bằng file name
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
 
-    # 2. Lấy thông tin từ Secrets (Phải khớp với tên trong Streamlit Cloud Secrets)
-    try:
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
+    # 3. Mở sheet
+    sheet = client.open("tips_received").sheet1
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
 
-        # 3. Mở file (Tên file phải chính xác 100% như trên Google Sheets)
-        sheet = client.open("tips_received").sheet1
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
-
-        # 4. Xử lý dữ liệu
-        if not df.empty and 'Ngày' in df.columns:
-            # Chuyển cột Ngày sang định dạng datetime
-            df['Ngày'] = pd.to_datetime(df['Ngày'], dayfirst=True)
-            # Tạo cột Tháng/Năm để nhóm dữ liệu
-            df['Tháng/Năm'] = df['Ngày'].dt.strftime('%m/%Y')
-            return df
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Lỗi kết nối hoặc dữ liệu: {e}")
-        return pd.DataFrame()
+    if 'Ngày' in df.columns:
+        df['Ngày'] = pd.to_datetime(df['Ngày'], dayfirst=True)
+        df['Tháng/Năm'] = df['Ngày'].dt.strftime('%m/%Y')
+    return df
 
 
-# --- HIỂN THỊ GIAO DIỆN ---
 try:
     df = load_data()
 
-    if not df.empty:
-        # --- XỬ LÝ SẮP XẾP VÀ NHÓM THEO THÁNG ---
-        # Tạo cột phụ để sắp xếp thời gian chuẩn
-        df['Sort_Period'] = df['Ngày'].dt.to_period('M')
+    # --- XỬ LÝ SẮP XẾP VÀ NHÓM THEO THÁNG ---
+    # Tạo cột phụ để sắp xếp chính xác theo thời gian (năm trước tháng sau)
+    df['Sort_Period'] = df['Ngày'].dt.to_period('M')
 
-        # Tính tổng tiền tips theo tháng
-        df_monthly = df.groupby(['Sort_Period', 'Tháng/Năm'])['Tiền Tips'].sum().reset_index()
-        df_monthly = df_monthly.sort_values('Sort_Period')
+    # Nhóm dữ liệu và tính tổng
+    df_monthly = df.groupby(['Sort_Period', 'Tháng/Năm'])['Tiền Tips'].sum().reset_index()
 
-        st.subheader("🗓️ Tổng hợp thu nhập theo tháng")
+    # Sắp xếp lại bảng dữ liệu theo đúng trình tự thời gian
+    df_monthly = df_monthly.sort_values('Sort_Period')
 
-        # Hiển thị số tổng dưới dạng thẻ (Metrics)
-        cols = st.columns(len(df_monthly))
-        for index, row in df_monthly.iterrows():
-            with cols[index]:
-                st.metric(label=f"Tháng {row['Tháng/Năm']}", value=f"{row['Tiền Tips']:,.0f} VNĐ")
+    st.subheader("🗓️ Tổng hợp thu nhập theo tháng")
 
-        st.divider()
+    # Hiển thị Metrics theo hàng ngang
+    cols = st.columns(len(df_monthly))
+    for index, row in df_monthly.iterrows():
+        with cols[index]:
+            st.metric(label=f"Tháng {row['Tháng/Năm']}", value=f"{row['Tiền Tips']:,.0f} VNĐ")
 
-        # --- BIỂU ĐỒ CỘT ---
-        st.subheader("📊 Biểu đồ so sánh thu nhập")
-        fig_col = px.bar(
-            df_monthly,
-            x='Tháng/Năm',
-            y='Tiền Tips',
-            text_auto=',.0f',
-            title="Tổng tiền Tips nhận được",
-            color='Tiền Tips',
-            color_continuous_scale='Viridis'
-        )
-        # Giữ đúng thứ tự tháng trên trục X
-        fig_col.update_layout(xaxis={'categoryorder': 'array', 'categoryarray': df_monthly['Tháng/Năm']})
-        st.plotly_chart(fig_col, use_container_width=True)
+    st.divider()
 
-        # --- BẢNG CHI TIẾT ---
-        with st.expander("Xem chi tiết lịch sử nhận tips"):
-            st.dataframe(df.sort_values(by='Ngày', ascending=False), use_container_width=True)
+    # --- BIỂU ĐỒ CỘT SO SÁNH CÁC THÁNG ---
+    st.subheader("📊 Biểu đồ so sánh thu nhập các tháng")
+    fig_col = px.bar(
+        df_monthly,
+        x='Tháng/Năm',
+        y='Tiền Tips',
+        text_auto=',.0f',  # Hiển thị con số trên đầu cột
+        title="Tổng tiền Tips nhận được theo từng tháng",
+        color='Tiền Tips',  # Màu sắc thay đổi theo độ cao của cột
+        color_continuous_scale='Viridis'
+    )
 
-    else:
-        st.warning("Đang chờ dữ liệu từ Google Sheets... Hãy đảm bảo bạn đã nhập dữ liệu vào file.")
+    # Đảm bảo trục X không bị tự động sắp xếp lại theo chữ cái
+    fig_col.update_layout(xaxis={'categoryorder': 'array', 'categoryarray': df_monthly['Tháng/Năm']})
+
+    st.plotly_chart(fig_col, use_container_width=True)
+
+    # --- BẢNG CHI TIẾT ---
+    with st.expander("Xem bảng dữ liệu chi tiết hàng ngày"):
+        st.dataframe(df.sort_values(by='Ngày', ascending=False), use_container_width=True)
 
 except Exception as e:
-    st.error(f"Đã xảy ra lỗi hiển thị: {e}")
+    st.error(f"Lỗi: {e}")
