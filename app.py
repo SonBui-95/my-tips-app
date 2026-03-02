@@ -14,7 +14,7 @@ def load_data():
     try:
         # 1. Tạo credentials từ secrets.toml
         creds = service_account.Credentials.from_service_account_info(
-            st.secrets["google_service_account"],
+            st.secrets["gcp_service_account"],
             scopes=[
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive",
